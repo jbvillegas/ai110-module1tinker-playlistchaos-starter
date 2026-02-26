@@ -21,6 +21,8 @@ def init_state():
         st.session_state.profile = dict(DEFAULT_PROFILE)
     if "history" not in st.session_state:
         st.session_state.history = []
+    if "saved_profiles" not in st.session_state:
+        st.session_state.saved_profiles = {}
 
 
 def default_songs():
@@ -188,6 +190,19 @@ def profile_sidebar():
     st.sidebar.header("Mood profile")
 
     profile = st.session_state.profile
+    saved_profiles = st.session_state.saved_profiles
+
+    # Load profile from saved profiles
+    profile_options = ["New Profile"] + list(saved_profiles.keys())
+    selected_profile = st.sidebar.selectbox(
+        "Load profile",
+        options=profile_options,
+        key="profile_selector",
+    )
+
+    if selected_profile != "New Profile" and selected_profile in saved_profiles:
+        st.session_state.profile = dict(saved_profiles[selected_profile])
+        profile = st.session_state.profile
 
     profile["name"] = st.sidebar.text_input(
         "Profile name",
@@ -220,6 +235,25 @@ def profile_sidebar():
         "Include Mixed playlist in views",
         value=bool(profile.get("include_mixed", True)),
     )
+
+    # Save profile functionality
+    col_save, col_delete = st.sidebar.columns(2)
+    with col_save:
+        if st.button("💾 Save Profile", use_container_width=True):
+            profile_name = profile.get("name", "Unnamed")
+            if profile_name and profile_name != "Unnamed":
+                st.session_state.saved_profiles[profile_name] = dict(profile)
+                st.sidebar.success(f"Profile '{profile_name}' saved!")
+            else:
+                st.sidebar.warning("Please enter a profile name first.")
+
+    with col_delete:
+        if selected_profile != "New Profile" and st.button("🗑️ Delete", use_container_width=True):
+            if selected_profile in saved_profiles:
+                del st.session_state.saved_profiles[selected_profile]
+                st.session_state.profile = dict(DEFAULT_PROFILE)
+                st.sidebar.success(f"Profile '{selected_profile}' deleted!")
+                st.rerun()
 
     st.sidebar.write("Current profile:", profile["name"])
 
@@ -276,8 +310,20 @@ def render_playlist(label, songs):
         st.write("No songs in this playlist.")
         return
 
-    query = st.text_input(f"Search {label} playlist by artist", key=f"search_{label}")
+    # Filter options
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        query = st.text_input(f"Search {label} playlist by artist", key=f"search_{label}")
+    with col2:
+        filter_by_favorite = st.checkbox("Filter by favorite genre", key=f"filter_{label}")
+
+    # Apply search filter
     filtered = search_songs(songs, query, field="artist")
+
+    # Apply favorite genre filter
+    if filter_by_favorite:
+        favorite_genre = st.session_state.profile.get("favorite_genre", "")
+        filtered = [song for song in filtered if song.get("genre") == favorite_genre]
 
     if not filtered:
         st.write("No matching songs.")
@@ -372,6 +418,9 @@ def clear_controls():
         st.session_state.songs = default_songs()
     if st.sidebar.button("Clear history"):
         st.session_state.history = []
+    if st.sidebar.button("Clear all saved profiles"):
+        st.session_state.saved_profiles = {}
+        st.sidebar.info("All saved profiles cleared.")
 
 
 def main():
